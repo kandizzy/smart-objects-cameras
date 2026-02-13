@@ -2,6 +2,21 @@
 
 Optical Character Recognition (OCR) system for reading text from whiteboards using the OAK-D camera and PaddlePaddle OCR models.
 
+## Two Versions Available
+
+| Feature | `whiteboard_reader.py` | `whiteboard_reader_full.py` |
+|---------|----------------------|---------------------------|
+| **Text Detection** | ✅ Yes (finds text regions) | ✅ Yes (finds text regions) |
+| **Text Recognition** | ❌ No (detection only) | ✅ **Yes (extracts text content)** |
+| **Output** | "3 text regions detected" | "Project Due Monday" |
+| **Performance** | Faster (single-stage) | Slower (two-stage) |
+| **Use Case** | "Is there text?" | "What does it say?" |
+| **Complexity** | Simple | Complex |
+
+**Choose based on your needs:**
+- **Detection only** (`whiteboard_reader.py`) - Fast, tells you IF text is present
+- **Full recognition** (`whiteboard_reader_full.py`) - Slower, tells you WHAT the text says
+
 ## Overview
 
 The whiteboard reader uses a **two-stage OCR pipeline**:
@@ -10,6 +25,18 @@ The whiteboard reader uses a **two-stage OCR pipeline**:
 2. **Text Recognition** (Stage 2): Reads the detected text using PaddlePaddle text recognition
 
 This implementation is adapted from Luxonis oak-examples and follows the established patterns from `person_detector.py` and `fatigue_detector.py`.
+
+## Handwriting Support
+
+**Good news:** PaddleOCR models support both printed AND handwritten text!
+
+- ✅ **Printed text**: Signs, posters, whiteboards with markers
+- ✅ **Handwritten text**: Whiteboard writing, notes, markers
+- ✅ **Vertical text**: Chinese, Japanese, rotated text
+- ✅ **Rotated/curved text**: Non-straight text
+- ⚠️ **Cursive handwriting**: Supported but less accurate
+
+The PaddlePaddle models (especially newer PP-OCRv5) are trained on diverse datasets including handwriting, so they should work well with typical whiteboard marker writing.
 
 ## Features
 
@@ -38,7 +65,8 @@ These are already installed in the shared venv at `/opt/oak-shared/venv/`.
 
 ```
 ~/oak-projects/
-├── whiteboard_reader.py           # Main OCR script
+├── whiteboard_reader.py           # Detection only (simple, fast)
+├── whiteboard_reader_full.py      # Full text recognition (complex, slower)
 ├── depthai_models/                # Model YAML files (copy to Pi)
 │   ├── paddle_text_detection.RVC2.yaml
 │   ├── paddle_text_detection.RVC4.yaml
@@ -52,7 +80,14 @@ These are already installed in the shared venv at `/opt/oak-shared/venv/`.
 
 ```bash
 # From your laptop (in the smart-objects-cameras directory)
+
+# Copy detection-only version
 scp whiteboard_reader.py orbit:~/oak-projects/
+
+# Copy full text recognition version
+scp whiteboard_reader_full.py orbit:~/oak-projects/
+
+# Copy model files (required for both versions)
 scp -r depthai_models orbit:~/oak-projects/
 ```
 
@@ -60,7 +95,7 @@ Or use VS Code Remote SSH to edit directly on the Pi.
 
 ## Usage
 
-### Basic Usage
+### Basic Usage - Detection Only (whiteboard_reader.py)
 
 ```bash
 # Activate shared venv
@@ -82,7 +117,42 @@ python3 whiteboard_reader.py --discord
 python3 whiteboard_reader.py --discord --discord-quiet
 ```
 
+**Output:**
+```
+Text regions: 3 | Detected: YES
+```
+
+### Full Text Recognition (whiteboard_reader_full.py)
+
+```bash
+# Activate shared venv
+activate-oak
+
+# Full OCR with text extraction
+python3 whiteboard_reader_full.py
+
+# With live video display showing recognized text
+python3 whiteboard_reader_full.py --display
+
+# With Discord notifications (includes actual text content)
+python3 whiteboard_reader_full.py --discord
+
+# Adjust confidence threshold (filter low-confidence results)
+python3 whiteboard_reader_full.py --confidence 0.4
+```
+
+**Output:**
+```
+Regions: 3 | Text: "Project Due Monday"
+
+TEXT DETECTED (2 lines):
+  1. Project Due Monday
+  2. Submit by 5pm
+```
+
 ### Command-Line Options
+
+**Both versions:**
 
 | Option | Description |
 |--------|-------------|
@@ -92,6 +162,12 @@ python3 whiteboard_reader.py --discord --discord-quiet
 | `--display` | Show live window with text bounding boxes |
 | `--fps-limit N` | FPS limit (default: 5 for RVC2, 30 for RVC4) |
 | `--device ID` | Optional device ID or IP |
+
+**Full version only:**
+
+| Option | Description |
+|--------|-------------|
+| `--confidence N` | Minimum confidence threshold for recognition (default: 0.25) |
 
 ### Examples
 

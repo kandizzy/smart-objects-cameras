@@ -7,6 +7,9 @@ camera_status.json
 fatigue_status.json
 whiteboard_status.json
 
+# History logs (time-series data)
+whiteboard_history.jsonl
+
 # Generated screenshots (runtime artifacts)
 latest_frame.jpg
 latest_fatigue_frame.jpg

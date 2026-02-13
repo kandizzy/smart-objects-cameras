@@ -227,6 +227,7 @@ cd ~/path/to/smart-objects-cameras    # Navigate to where you cloned the repo
 # Copy fatigue detector and its dependencies
 scp fatigue_detector.py orbit:~/oak-projects/
 scp -r utils orbit:~/oak-projects/
+scp -r depthai_models orbit:~/oak-projects/
 scp discord_notifier.py orbit:~/oak-projects/
 scp discord_dm_notifier.py orbit:~/oak-projects/
 
@@ -242,6 +243,7 @@ cd ~/path/to/smart-objects-cameras
 # Copy gaze detector and its dependencies
 scp gaze_detector.py orbit:~/oak-projects/
 scp -r utils orbit:~/oak-projects/
+scp -r depthai_models orbit:~/oak-projects/
 
 # Optional: Copy these if you want to add Discord notifications (bonus challenge)
 scp discord_notifier.py orbit:~/oak-projects/
@@ -1094,6 +1096,21 @@ scp -r utils orbit:~/oak-projects/
 
 The `-r` flag copies the entire folder.
 
+### "Model YAML file not found" or "depthai_models not found"
+
+**Problem:** You copied `fatigue_detector.py`, `gaze_detector.py`, or `whiteboard_reader*.py` but forgot to copy the `depthai_models/` folder.
+
+**⚠️ On YOUR LOCAL COMPUTER:**
+
+**Solution:** From your LOCAL computer:
+
+```bash
+cd ~/path/to/smart-objects-cameras
+scp -r depthai_models orbit:~/oak-projects/
+```
+
+**Note:** The `depthai_models` folder contains YAML configuration files that tell the camera which AI models to use. Without these files, the scripts can't load the detection models.
+
 ### "I made changes to my code but nothing changed when I ran it"
 
 **Problem:** You edited the file on your LOCAL computer, but the Pi is still running the old version.
@@ -1172,6 +1189,9 @@ After copying files, your `~/oak-projects/` folder on the Pi will look like this
 ├── fatigue_detector.py              # Fatigue detection script
 ├── utils/                           # Helper modules (folder)
 │   └── face_landmarks.py
+├── depthai_models/                  # Model YAML files (folder)
+│   ├── yunet.RVC2.yaml
+│   └── mediapipe_face_landmarker.RVC2.yaml
 ├── discord_notifier.py              # Discord webhook helper
 ├── discord_dm_notifier.py           # Your personal DM bot
 └── .env                             # Your tokens
@@ -1186,6 +1206,9 @@ After copying files, your `~/oak-projects/` folder on the Pi will look like this
 │   ├── process_keypoints.py
 │   ├── node_creators.py
 │   └── host_concatenate_head_pose.py
+├── depthai_models/                  # Model YAML files (folder)
+│   ├── gaze_estimation_adas.RVC2.yaml
+│   └── head_pose_estimation.RVC2.yaml
 └── .env                             # Your tokens (already configured)
 
 # Optional (for bonus challenge - adding Discord notifications):
@@ -1219,10 +1242,10 @@ After copying files, your `~/oak-projects/` folder on the Pi will look like this
 
 ## Quick Reference: What Files Do I Need?
 
-| What You Want To Run     | Files to Copy                                                                                 | Additional Notes                                                                    |
-| ------------------------ | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| **Fatigue Detection** ⭐ | `fatigue_detector.py`<br>`utils/` folder<br>`discord_notifier.py`<br>`discord_dm_notifier.py` | Recommended! Uses personal DM bot                                                   |
-| **Gaze Estimation** ⭐   | `gaze_detector.py`<br>`utils/` folder                                                         | Recommended! Terminal output only<br>_(Discord files optional for bonus challenge)_ |
+| What You Want To Run     | Files to Copy                                                                                                          | Additional Notes                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **Fatigue Detection** ⭐ | `fatigue_detector.py`<br>`utils/` folder<br>`depthai_models/` folder<br>`discord_notifier.py`<br>`discord_dm_notifier.py` | Recommended! Uses personal DM bot                                                   |
+| **Gaze Estimation** ⭐   | `gaze_detector.py`<br>`utils/` folder<br>`depthai_models/` folder                                                      | Recommended! Terminal output only<br>_(Discord files optional for bonus challenge)_ |
 | **Personal DM Bot**      | `discord_dm_notifier.py`                                                                      | Add your DISCORD_DM_BOT_TOKEN to .env                                               |
 | **Person Detection**     | `person_detector_with_display.py`<br>`discord_notifier.py`                                    | Uses class camera bots                                                              |
 | **Public Camera Bot**    | `discord_bot.py`                                                                              | Already configured! Just run it                                                     |
