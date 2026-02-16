@@ -97,14 +97,13 @@ avg_conf = sum(e['avg_confidence'] for e in recent) / len(recent)
 print(f"Average confidence: {avg_conf:.2%}")
 ```
 
-## What This Enables (Future Features)
+## Feature Status
 
-**Feature 1** (✅ Complete) provides the foundation for:
-
-- **Feature 2**: Change detection (compare text over time)
-- **Feature 3**: Conversational messages ("I see new text!")
-- **Feature 4**: Confidence aggregation (combine similar readings)
-- **Feature 5**: Smart feedback ("Text cut off on left side")
+- **Feature 1**: Text history logging (JSONL) ✅ Complete
+- **Feature 2**: Change detection (compare text over time) ✅ Complete
+- **Feature 3**: Conversational messages ("I see new text!") ✅ Complete
+- **Feature 4**: Confidence aggregation (combine similar readings) ✅ Complete
+- **Feature 5**: Smart feedback ("Text cut off on left side") ✅ Complete
 
 ## Use Cases
 
@@ -161,14 +160,50 @@ find ~/oak-projects -name "whiteboard_history_*.jsonl" -mtime +7 -exec gzip {} \
 mv ~/oak-projects/whiteboard_history.jsonl ~/oak-projects/whiteboard_history_backup.jsonl
 ```
 
-## Next Steps
+## Features 3-5 Details
 
-With text history logging in place, we can now implement:
+### Feature 3: Conversational Messages
 
-1. **Change Detection** - Detect when text appears, changes, or disappears
-2. **Conversational Messages** - Camera announces what it sees
-3. **Confidence Building** - Aggregate similar readings for better accuracy
-4. **Smart Feedback** - Suggest camera adjustments based on detection quality
+The camera now speaks in natural language instead of robotic status messages:
+
+**Before:** `TEXT DETECTED (3 regions)`
+**After:** `I can see new text on the board: Project Due Monday`
+
+Messages vary to feel natural. Examples:
+- "Someone just wrote: Budget $5000"
+- "Looks like someone edited the board: 'Mondy' changed to 'Monday'"
+- "Whoa, I think the camera moved! I'm looking at completely different text now"
+- "Looks like the board was erased - it's blank now"
+
+Works in both console output and Discord notifications.
+
+### Feature 4: Confidence Aggregation
+
+OCR readings are noisy - the same text often reads differently each frame:
+```
+"LSREATEMACIK" (0.85)
+"LCREATE MACIK" (0.87)
+"CREATE MAGIK"  (0.92)
+```
+
+The `ConfidenceAggregator` maintains a rolling buffer of the last 10 readings and clusters similar text using fuzzy matching (60% similarity threshold). It picks the highest-confidence variant as the consensus.
+
+The console status line shows the consensus text and aggregated confidence:
+```
+Regions: 2 | Best: "CREATE MAGIK" (89%)
+```
+
+Change detection also uses consensus text, making state transitions more stable.
+
+### Feature 5: Smart Feedback
+
+Every 30 seconds, the system analyzes detection quality and provides actionable tips:
+
+- **Low confidence:** "Confidence is low (35%) - try adjusting lighting or moving the camera closer"
+- **Text cut off:** "Text may be cut off on the left and bottom - try panning the camera"
+- **Tiny regions:** "2 text regions are very small - moving closer might help"
+- **Good reads:** "Getting clear reads! Confidence: 91%"
+- **Unreadable:** "Detected text regions but couldn't read them - the text may be too blurry or at an angle"
 
 ## Technical Details
 
@@ -210,5 +245,4 @@ tail -f ~/oak-projects/whiteboard_history.jsonl | jq '.'
 
 ---
 
-**Status**: ✅ Feature 1 Complete
-**Next**: Feature 2 - Change Detection
+**Status**: ✅ Features 1-5 Complete

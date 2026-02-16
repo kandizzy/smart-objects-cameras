@@ -29,6 +29,7 @@ from pathlib import Path
 from datetime import datetime
 from collections import deque
 from difflib import SequenceMatcher
+import random
 
 # Load environment variables for Discord webhook
 try:
@@ -93,16 +94,65 @@ last_screenshot_time = 0
 # History log for text tracking over time (JSONL format)
 HISTORY_FILE = Path.home() / "oak-projects" / "whiteboard_history.jsonl"
 
+# Config file for runtime reconfiguration via Discord bot
+CONFIG_FILE = Path.home() / "oak-projects" / "whiteboard_config.json"
+CONFIG_CHECK_INTERVAL = 2  # Check every 2 seconds
+last_config_check = 0
+
+# Smart feedback interval (don't spam suggestions)
+FEEDBACK_INTERVAL = 30  # Seconds between feedback messages
+last_feedback_time = 0
+
 
 def log_event(message: str):
     """Print and optionally log an event."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{timestamp}] {message}"
-    print(line)
+    try:
+        print(line)
+    except UnicodeEncodeError:
+        print(line.encode('ascii', 'replace').decode('ascii'))
 
     if log_file:
         log_file.write(line + "\n")
         log_file.flush()
+
+
+def load_config():
+    """Read config file and return dict with defaults if file missing or invalid."""
+    defaults = {
+        "confidence": 0.25,
+        "fps_limit": 5,
+        "notifications_enabled": True
+    }
+    if not CONFIG_FILE.exists():
+        return defaults
+    try:
+        config = json.loads(CONFIG_FILE.read_text())
+        # Merge with defaults so missing keys get default values
+        for key, value in defaults.items():
+            if key not in config:
+                config[key] = value
+        return config
+    except (json.JSONDecodeError, OSError) as e:
+        log_event(f"WARNING: Could not read config file: {e}")
+        return defaults
+
+
+def write_default_config():
+    """Write default config on startup if file doesn't exist."""
+    if CONFIG_FILE.exists():
+        return
+    try:
+        default_config = {
+            "confidence": args.confidence,
+            "fps_limit": args.fps_limit if args.fps_limit else 5,
+            "notifications_enabled": True
+        }
+        CONFIG_FILE.write_text(json.dumps(default_config, indent=2))
+        log_event(f"Created default config file: {CONFIG_FILE}")
+    except OSError as e:
+        log_event(f"WARNING: Could not write default config: {e}")
 
 
 def send_discord_notification(message: str, force: bool = False):
@@ -267,6 +317,336 @@ def detect_text_changes(current_text: list, previous_text: list):
     }
 
 
+# ============================================================
+# Feature 3: Conversational Messages
+# ============================================================
+
+def format_conversational_message(changes: dict, text_lines: list, for_discord: bool = False) -> str:
+    """
+    Turn change detection results into natural, conversational messages.
+
+    Instead of "TEXT DETECTED (3 regions)", produces messages like:
+    "I can see some new writing - looks like 'Project Due Monday'"
+    """
+    change_type = changes['change_type']
+    bold = "**" if for_discord else ""
+
+    if change_type == 'new':
+        new_lines = changes['new_lines']
+        if len(new_lines) == 1:
+            openers = [
+                f"I can see new text on the board: {bold}{new_lines[0]}{bold}",
+                f"Someone just wrote: {bold}{new_lines[0]}{bold}",
+                f"New writing appeared - it says {bold}{new_lines[0]}{bold}",
+            ]
+        else:
+            preview = f"{bold}{new_lines[0]}{bold}"
+            openers = [
+                f"I see {len(new_lines)} new lines on the board. First one reads: {preview}",
+                f"New text just appeared ({len(new_lines)} lines) - starts with: {preview}",
+                f"Someone added {len(new_lines)} lines. The first says: {preview}",
+            ]
+        msg = random.choice(openers)
+        if for_discord and len(new_lines) > 1:
+            msg += "\n" + "\n".join(f"  {bold}{line}{bold}" for line in new_lines[1:3])
+        return msg
+
+    elif change_type == 'edited':
+        pairs = changes['edited_pairs']
+        if len(pairs) == 1:
+            old, new = pairs[0]
+            openers = [
+                f"Looks like someone edited the board: {bold}{old}{bold} changed to {bold}{new}{bold}",
+                f"I noticed an edit - {bold}{old}{bold} is now {bold}{new}{bold}",
+                f"The text was updated: {bold}{old}{bold} became {bold}{new}{bold}",
+            ]
+        else:
+            openers = [
+                f"A few things were edited on the board ({len(pairs)} changes)",
+                f"I see {len(pairs)} edits on the whiteboard",
+                f"Someone made {len(pairs)} changes to the text",
+            ]
+        msg = random.choice(openers)
+        if for_discord and len(pairs) > 1:
+            for old, new in pairs[:2]:
+                msg += f"\n  ~~{old}~~ -> {bold}{new}{bold}"
+        return msg
+
+    elif change_type == 'camera_moved':
+        similarity = changes['similarity']
+        preview = text_lines[0] if text_lines else "something new"
+        openers = [
+            f"Whoa, I think the camera moved! I'm looking at completely different text now ({similarity:.0%} match to before). I see: {bold}{preview}{bold}",
+            f"The view changed dramatically - I'm now reading: {bold}{preview}{bold}",
+            f"Looks like I'm pointed somewhere new. Now seeing: {bold}{preview}{bold}",
+        ]
+        return random.choice(openers)
+
+    elif change_type == 'mixed':
+        parts = []
+        if changes['new_lines']:
+            parts.append(f"added {bold}{changes['new_lines'][0]}{bold}")
+        if changes['removed_lines']:
+            parts.append(f"removed {bold}{changes['removed_lines'][0]}{bold}")
+        if changes['edited_pairs']:
+            old, new = changes['edited_pairs'][0]
+            parts.append(f"changed {bold}{old}{bold} to {bold}{new}{bold}")
+        detail = ", ".join(parts)
+        openers = [
+            f"The board got a makeover: {detail}",
+            f"Several things changed - {detail}",
+            f"Whiteboard update: {detail}",
+        ]
+        return random.choice(openers)
+
+    elif change_type == 'removed':
+        removed = changes['removed_lines']
+        if len(removed) == 1:
+            openers = [
+                f"Someone erased: {bold}{removed[0]}{bold}",
+                f"Text was removed: {bold}{removed[0]}{bold}",
+            ]
+        else:
+            openers = [
+                f"{len(removed)} lines were erased from the board",
+                f"Looks like someone wiped {len(removed)} lines off the board",
+            ]
+        return random.choice(openers)
+
+    elif change_type == 'stable':
+        count = len(text_lines)
+        openers = [
+            f"Board looks the same - still reading {count} line{'s' if count != 1 else ''}",
+            f"No changes - {count} line{'s' if count != 1 else ''} still there",
+        ]
+        return random.choice(openers)
+
+    else:
+        # Generic fallback
+        if text_lines:
+            return f"I can read {len(text_lines)} line{'s' if len(text_lines) != 1 else ''}: {bold}{text_lines[0]}{bold}"
+        return "I don't see any text right now"
+
+
+def format_cleared_message(previous_text: list, for_discord: bool = False) -> str:
+    """Conversational message for when the whiteboard is cleared."""
+    if previous_text:
+        openers = [
+            "Looks like the board was erased - it's blank now",
+            "The whiteboard was cleared",
+            "Everything was wiped off the board",
+        ]
+    else:
+        openers = [
+            "I don't see any text right now",
+            "The board appears empty",
+        ]
+    return random.choice(openers)
+
+
+# ============================================================
+# Feature 4: Confidence Aggregation
+# ============================================================
+
+class ConfidenceAggregator:
+    """
+    Maintains a rolling buffer of recent OCR readings and finds consensus text.
+
+    When the same text is read multiple times with variations:
+        "LSREATEMACIK" (0.85)
+        "LCREATE MACIK" (0.87)
+        "CREATE MAGIK"  (0.92)
+
+    Aggregates into: best guess "CREATE MAGIK" (seen 3x, best confidence 0.92)
+    """
+
+    def __init__(self, buffer_size: int = 10, similarity_threshold: float = 0.6):
+        self.buffer = deque(maxlen=buffer_size)
+        self.similarity_threshold = similarity_threshold
+        self._consensus_text = []
+        self._consensus_confidence = 0.0
+
+    def add_reading(self, text_lines: list, confidence_scores: list):
+        """Add a new OCR reading to the buffer."""
+        if not text_lines:
+            return
+        self.buffer.append({
+            'text_lines': text_lines,
+            'confidences': confidence_scores,
+            'timestamp': time.time()
+        })
+        self._update_consensus()
+
+    def _update_consensus(self):
+        """Recalculate consensus text from the buffer."""
+        if not self.buffer:
+            self._consensus_text = []
+            self._consensus_confidence = 0.0
+            return
+
+        # Collect all text lines across the buffer, grouped by similarity
+        clusters = []  # Each cluster: list of (text, confidence) tuples
+
+        for reading in self.buffer:
+            for i, line in enumerate(reading['text_lines']):
+                conf = reading['confidences'][i] if i < len(reading['confidences']) else 0.5
+                placed = False
+
+                # Try to place in an existing cluster
+                for cluster in clusters:
+                    # Compare against the best candidate in the cluster
+                    best_in_cluster = max(cluster, key=lambda x: x[1])
+                    sim = SequenceMatcher(None, line.lower(), best_in_cluster[0].lower()).ratio()
+                    if sim >= self.similarity_threshold:
+                        cluster.append((line, conf))
+                        placed = True
+                        break
+
+                if not placed:
+                    clusters.append([(line, conf)])
+
+        # For each cluster, pick the highest-confidence reading as the consensus
+        consensus = []
+        for cluster in clusters:
+            best_text, best_conf = max(cluster, key=lambda x: x[1])
+            times_seen = len(cluster)
+            consensus.append({
+                'text': best_text,
+                'confidence': best_conf,
+                'times_seen': times_seen,
+                'avg_confidence': sum(c for _, c in cluster) / len(cluster)
+            })
+
+        # Sort by times_seen (most frequent first), then by confidence
+        consensus.sort(key=lambda x: (x['times_seen'], x['confidence']), reverse=True)
+
+        self._consensus_text = [c['text'] for c in consensus]
+        self._consensus_confidence = (
+            sum(c['avg_confidence'] for c in consensus) / len(consensus) if consensus else 0.0
+        )
+        self._consensus_details = consensus
+
+    @property
+    def consensus_text(self) -> list:
+        """Best-guess text lines based on aggregated readings."""
+        return self._consensus_text
+
+    @property
+    def consensus_confidence(self) -> float:
+        """Overall aggregated confidence score."""
+        return self._consensus_confidence
+
+    @property
+    def details(self) -> list:
+        """Detailed consensus info: text, confidence, times_seen, avg_confidence."""
+        return getattr(self, '_consensus_details', [])
+
+    def format_consensus_summary(self) -> str:
+        """Human-readable summary of the current consensus."""
+        if not self.details:
+            return "No readings yet"
+        parts = []
+        for d in self.details[:5]:
+            seen = f"(seen {d['times_seen']}x, conf {d['avg_confidence']:.0%})"
+            parts.append(f"  \"{d['text']}\" {seen}")
+        return "Best reading:\n" + "\n".join(parts)
+
+    def clear(self):
+        """Reset the aggregator."""
+        self.buffer.clear()
+        self._consensus_text = []
+        self._consensus_confidence = 0.0
+        self._consensus_details = []
+
+
+# ============================================================
+# Feature 5: Smart Feedback
+# ============================================================
+
+def generate_smart_feedback(detections_list, recognitions_list, frame_shape,
+                            avg_confidence: float, num_regions: int,
+                            min_confidence: float = 0.25) -> list:
+    """
+    Analyze detection quality and provide actionable suggestions.
+
+    Returns a list of feedback strings (may be empty if everything looks good).
+    """
+    feedback = []
+    h, w = frame_shape[:2] if frame_shape is not None else (640, 1152)
+
+    # Check overall confidence
+    if avg_confidence > 0 and avg_confidence < 0.4:
+        feedback.append(
+            f"Confidence is low ({avg_confidence:.0%}) - try adjusting lighting or moving the camera closer"
+        )
+    elif avg_confidence >= 0.85:
+        feedback.append(
+            f"Getting clear reads! Confidence: {avg_confidence:.0%}"
+        )
+
+    # Check for text near frame edges (possibly cut off)
+    if detections_list:
+        edge_margin = 0.05  # 5% from edge
+        left_cut = False
+        right_cut = False
+        top_cut = False
+        bottom_cut = False
+
+        for det in detections_list:
+            xmin = getattr(det, 'xmin', 0)
+            ymin = getattr(det, 'ymin', 0)
+            xmax = getattr(det, 'xmax', 1)
+            ymax = getattr(det, 'ymax', 1)
+
+            if xmin < edge_margin:
+                left_cut = True
+            if xmax > (1.0 - edge_margin):
+                right_cut = True
+            if ymin < edge_margin:
+                top_cut = True
+            if ymax > (1.0 - edge_margin):
+                bottom_cut = True
+
+        cut_sides = []
+        if left_cut:
+            cut_sides.append("left")
+        if right_cut:
+            cut_sides.append("right")
+        if top_cut:
+            cut_sides.append("top")
+        if bottom_cut:
+            cut_sides.append("bottom")
+
+        if cut_sides:
+            sides_str = " and ".join(cut_sides)
+            feedback.append(
+                f"Text may be cut off on the {sides_str} - try panning the camera"
+            )
+
+    # Check for very small text regions (hard to recognize)
+    if detections_list:
+        tiny_count = 0
+        for det in detections_list:
+            det_w = getattr(det, 'xmax', 1) - getattr(det, 'xmin', 0)
+            det_h = getattr(det, 'ymax', 1) - getattr(det, 'ymin', 0)
+            # If region is less than 3% of frame in either dimension
+            if det_w < 0.03 or det_h < 0.015:
+                tiny_count += 1
+
+        if tiny_count > 0:
+            feedback.append(
+                f"{tiny_count} text region{'s are' if tiny_count > 1 else ' is'} very small - moving closer might help"
+            )
+
+    # Check for no detections despite having regions (all filtered out)
+    if num_regions > 0 and not recognitions_list:
+        feedback.append(
+            "Detected text regions but couldn't read them - the text may be too blurry or at an angle"
+        )
+
+    return feedback
+
+
 def extract_text_from_recognition(recognition_result, min_confidence=0.25):
     """Extract text from PaddleOCR recognition result."""
     text_line = ""
@@ -341,8 +721,11 @@ def draw_text_on_frame(frame, detections_list, recognitions_list, min_confidence
 def run_detection():
     """Main OCR detection loop using DepthAI 3.x with full text recognition."""
     global log_file, last_text_content, last_text_detected
+    global last_confirmed_text
     global pending_state, pending_state_time
     global last_status_update_time, last_screenshot_time
+    global last_feedback_time
+    global last_config_check
 
     # Get user and hostname for smart object announcements
     try:
@@ -379,6 +762,9 @@ def run_detection():
     if args.discord:
         discord_startup = f"📋 **{username}** is now running whiteboard_reader_full.py on **{hostname}**"
         send_discord_notification(discord_startup)
+
+    # Feature 4: Confidence aggregator for consensus text
+    aggregator = ConfidenceAggregator(buffer_size=10, similarity_threshold=0.6)
 
     try:
         # Connect to device
@@ -490,6 +876,10 @@ def run_detection():
             pipeline.start()
             log_event("Full OCR started. Reading text from whiteboard...\n")
 
+            # Ensure config file exists with defaults
+            write_default_config()
+            notifications_enabled = True
+
             # Create window if display is enabled
             if args.display:
                 cv2.namedWindow("Whiteboard OCR - Full", cv2.WINDOW_NORMAL)
@@ -532,6 +922,10 @@ def run_detection():
                     text_detected = len(text_lines) > 0
                     text_detection_history.append(text_detected)
 
+                    # Feature 4: Feed confidence aggregator
+                    if text_lines:
+                        aggregator.add_reading(text_lines, confidence_scores)
+
                     # Log to history file (every detection, not just changes)
                     if num_regions > 0:
                         log_text_history(text_lines, num_regions, avg_confidence)
@@ -541,8 +935,14 @@ def run_detection():
 
                     current_time = time.time()
 
-                    # Update console status (show recognized text)
-                    if text_lines:
+                    # Update console status (show consensus text from aggregator)
+                    consensus = aggregator.consensus_text
+                    if consensus:
+                        preview_text = consensus[0][:50] + ("..." if len(consensus[0]) > 50 else "")
+                        conf_str = f"{aggregator.consensus_confidence:.0%}"
+                        print(f"\r  Regions: {num_regions} | Best: \"{preview_text}\" ({conf_str})  ",
+                              end="", flush=True)
+                    elif text_lines:
                         preview_text = text_lines[0][:50] + ("..." if len(text_lines[0]) > 50 else "")
                         print(f"\r  Regions: {num_regions} | Text: \"{preview_text}\"  ",
                               end="", flush=True)
@@ -550,101 +950,70 @@ def run_detection():
                         print(f"\r  Regions: {num_regions} | Text: [none]  ",
                               end="", flush=True)
 
+                    # Feature 5: Smart feedback (throttled)
+                    if current_time - last_feedback_time >= FEEDBACK_INTERVAL and num_regions > 0:
+                        detections_for_feedback = (
+                            detections_msg.detections if hasattr(detections_msg, 'detections') else []
+                        )
+                        feedback = generate_smart_feedback(
+                            detections_for_feedback, recognitions_list,
+                            (REQ_HEIGHT, REQ_WIDTH), avg_confidence, num_regions,
+                            args.confidence
+                        )
+                        if feedback:
+                            for tip in feedback:
+                                log_event(f"\n💡 {tip}")
+                            last_feedback_time = current_time
+
                     # Debouncing logic for state changes
+                    # Use consensus text when available for more stable change detection
+                    effective_text = consensus if consensus else text_lines
+
                     if smoothed_detection != last_text_detected:
                         if pending_state == smoothed_detection:
                             if current_time - pending_state_time >= DEBOUNCE_SECONDS:
                                 # Confirm state change - detect WHAT changed
                                 if smoothed_detection:
                                     # Text is present - analyze what changed
-                                    changes = detect_text_changes(text_lines, last_confirmed_text)
+                                    changes = detect_text_changes(effective_text, last_confirmed_text)
 
-                                    # Log based on change type
-                                    if changes['change_type'] == 'new':
-                                        log_event(f"\n📝 NEW TEXT APPEARED ({len(changes['new_lines'])} lines):")
-                                        for i, line in enumerate(changes['new_lines'][:5], 1):
-                                            log_event(f"  {i}. {line}")
+                                    # Feature 3: Conversational messages
+                                    console_msg = format_conversational_message(changes, effective_text, for_discord=False)
+                                    log_event(f"\n{console_msg}")
 
-                                        if args.discord:
-                                            discord_msg = "📝 **New text appeared on whiteboard:**\n"
-                                            for line in changes['new_lines'][:3]:
-                                                discord_msg += f"• {line}\n"
-                                            send_discord_notification(discord_msg)
+                                    # Show aggregator consensus details for multi-read text
+                                    if aggregator.details:
+                                        for d in aggregator.details[:3]:
+                                            if d['times_seen'] > 1:
+                                                log_event(f"  (seen {d['times_seen']}x, best confidence: {d['confidence']:.0%})")
 
-                                    elif changes['change_type'] == 'edited':
-                                        log_event(f"\n✏️  TEXT EDITED ({len(changes['edited_pairs'])} changes):")
-                                        for old, new in changes['edited_pairs'][:3]:
-                                            log_event(f"  • '{old}' → '{new}'")
-
-                                        if args.discord:
-                                            discord_msg = "✏️ **Text was edited:**\n"
-                                            for old, new in changes['edited_pairs'][:2]:
-                                                discord_msg += f"• ~~{old}~~ → **{new}**\n"
-                                            send_discord_notification(discord_msg)
-
-                                    elif changes['change_type'] == 'camera_moved':
-                                        log_event(f"\n📸 CAMERA MOVED - completely different text detected")
-                                        log_event(f"  Similarity: {changes['similarity']:.1%}")
-                                        log_event(f"  Now seeing:")
-                                        for i, line in enumerate(text_lines[:3], 1):
-                                            log_event(f"    {i}. {line}")
-
-                                        if args.discord:
-                                            discord_msg = f"📸 **Camera moved!** (similarity: {changes['similarity']:.0%})\n"
-                                            discord_msg += "Now seeing:\n"
-                                            for line in text_lines[:2]:
-                                                discord_msg += f"• {line}\n"
-                                            send_discord_notification(discord_msg)
-
-                                    elif changes['change_type'] == 'mixed':
-                                        log_event(f"\n🔄 TEXT CHANGED (multiple edits):")
-                                        if changes['new_lines']:
-                                            log_event(f"  Added: {', '.join(changes['new_lines'][:2])}")
-                                        if changes['removed_lines']:
-                                            log_event(f"  Removed: {', '.join(changes['removed_lines'][:2])}")
-                                        if changes['edited_pairs']:
-                                            log_event(f"  Edited: {len(changes['edited_pairs'])} lines")
-
-                                        if args.discord:
-                                            discord_msg = "🔄 **Whiteboard was updated:**\n"
-                                            if changes['new_lines']:
-                                                discord_msg += f"➕ Added: {changes['new_lines'][0]}\n"
-                                            if changes['removed_lines']:
-                                                discord_msg += f"➖ Removed: {changes['removed_lines'][0]}\n"
-                                            send_discord_notification(discord_msg)
-
-                                    elif changes['change_type'] == 'stable':
-                                        # Same text seen again - just log
-                                        log_event(f"\n✅ TEXT STABLE ({len(text_lines)} lines, {changes['similarity']:.0%} match)")
-
-                                    else:
-                                        # Fallback - generic detection
-                                        log_event(f"\nTEXT DETECTED ({len(text_lines)} lines):")
-                                        for i, line in enumerate(text_lines[:5], 1):
-                                            log_event(f"  {i}. {line}")
+                                    if args.discord and notifications_enabled:
+                                        discord_msg = format_conversational_message(changes, effective_text, for_discord=True)
+                                        send_discord_notification(discord_msg)
 
                                     # Update confirmed text
-                                    last_confirmed_text = text_lines.copy()
+                                    last_confirmed_text = effective_text.copy()
 
                                 else:
                                     # Text disappeared
-                                    if last_confirmed_text:
-                                        log_event("\n🗑️  TEXT REMOVED - whiteboard cleared or camera moved away")
-                                        if args.discord and not args.discord_quiet:
-                                            send_discord_notification("🗑️ Whiteboard cleared")
-                                    else:
-                                        log_event("\nNo text detected")
+                                    console_msg = format_cleared_message(last_confirmed_text, for_discord=False)
+                                    log_event(f"\n{console_msg}")
+
+                                    if args.discord and not args.discord_quiet and notifications_enabled:
+                                        discord_msg = format_cleared_message(last_confirmed_text, for_discord=True)
+                                        send_discord_notification(discord_msg)
 
                                     last_confirmed_text = []
+                                    aggregator.clear()
 
                                 last_text_detected = smoothed_detection
-                                last_text_content = text_lines
+                                last_text_content = effective_text
                                 pending_state = None
                                 pending_state_time = None
 
-                                # Update status file
+                                # Update status file (include consensus text)
                                 update_status_file(
-                                    smoothed_detection, text_lines, num_regions,
+                                    smoothed_detection, effective_text, num_regions,
                                     running=True, username=username, hostname=hostname)
                         else:
                             # New pending state
@@ -712,6 +1081,19 @@ def run_detection():
                         last_screenshot_time = current_time
                     except Exception as e:
                         log_event(f"WARNING: Could not save screenshot: {e}")
+
+                # Periodic config file check
+                if current_time - last_config_check >= CONFIG_CHECK_INTERVAL:
+                    config = load_config()
+                    new_confidence = config.get('confidence', args.confidence)
+                    if new_confidence != args.confidence:
+                        log_event(f"Config updated: confidence={new_confidence}")
+                        args.confidence = new_confidence
+                    new_fps = config.get('fps_limit', fps_limit)
+                    if new_fps != fps_limit:
+                        log_event(f"Config updated: fps_limit={new_fps} (requires pipeline restart to take effect)")
+                    notifications_enabled = config.get('notifications_enabled', True)
+                    last_config_check = current_time
 
                 # Small sleep to prevent CPU spinning
                 time.sleep(0.01)

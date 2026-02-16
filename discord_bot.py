@@ -5,11 +5,19 @@ Simple Discord Bot for OAK-D Camera
 Responds to commands and sends camera status updates.
 
 Commands:
-    !ping        - Test if bot is alive
-    !status      - Check camera status
-    !detect      - Get current detection info
-    !screenshot  - Get live camera image
-    !help        - Show available commands
+    !ping                - Test if bot is alive
+    !status              - Check camera status
+    !detect              - Get current detection info
+    !screenshot          - Get live camera image
+    !whiteboard          - Show current whiteboard text
+    !whiteboard-status   - Full whiteboard status embed
+    !whiteboard-history  - Show recent whiteboard readings
+    !whiteboard-screenshot - Get whiteboard camera image
+    !whiteboard-consensus  - Show aggregated reading
+    !set-confidence      - Set OCR confidence threshold
+    !set-fps             - Set camera FPS
+    !toggle-notifications - Toggle Discord notifications
+    !help                - Show available commands
 
 Setup:
     1. Install discord.py: pip install discord.py
@@ -21,6 +29,7 @@ import discord
 from discord.ext import commands
 import os
 import json
+import socket
 from pathlib import Path
 from datetime import datetime
 
@@ -35,6 +44,12 @@ except ImportError:
 BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 STATUS_FILE = Path.home() / "oak-projects" / "camera_status.json"
 SCREENSHOT_FILE = Path.home() / "oak-projects" / "latest_frame.jpg"
+
+# Whiteboard integration
+WHITEBOARD_STATUS_FILE = Path.home() / "oak-projects" / "whiteboard_status.json"
+WHITEBOARD_HISTORY_FILE = Path.home() / "oak-projects" / "whiteboard_history.jsonl"
+WHITEBOARD_SCREENSHOT_FILE = Path.home() / "oak-projects" / "latest_whiteboard_frame.jpg"
+WHITEBOARD_CONFIG_FILE = Path.home() / "oak-projects" / "whiteboard_config.json"
 
 # Check token
 if not BOT_TOKEN:
@@ -51,6 +66,10 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 # Remove default help command (we'll make our own)
 bot.remove_command('help')
 
+# Camera identity from hostname (e.g., "orbit", "gravity", "horizon")
+CAMERA_NAME = socket.gethostname().split('.')[0].lower()
+KNOWN_CAMERAS = ["orbit", "gravity", "horizon"]
+
 
 # --- Event Handlers ---
 
@@ -58,6 +77,7 @@ bot.remove_command('help')
 async def on_ready():
     """Called when bot successfully connects to Discord."""
     print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
+    print(f'Camera: {CAMERA_NAME}')
     print('Bot is ready!')
     print('------')
 
@@ -170,22 +190,380 @@ async def screenshot(ctx):
         await ctx.send(f"❌ Error sending screenshot: {str(e)}")
 
 
+# --- Camera Routing Commands ---
+
+async def _dispatch_to_command(ctx, cmd_string):
+    """
+    Dispatch a command string to the appropriate handler.
+
+    Rewrites ctx.message.content so discord.py handles argument parsing
+    naturally (e.g., "whiteboard-history 10" passes 10 as the count param).
+    """
+    parts = cmd_string.strip().split(None, 1)
+    cmd_name = parts[0]
+    cmd_args = parts[1] if len(parts) > 1 else ""
+
+    target_cmd = bot.get_command(cmd_name)
+    if not target_cmd:
+        await ctx.send(f"Unknown command: `{cmd_name}`\n💡 Use `!help` to see available commands")
+        return
+
+    # Rewrite the message content and re-process
+    ctx.message.content = f"!{cmd_name} {cmd_args}".strip()
+    await bot.process_commands(ctx.message)
+
+
+@bot.command(name='orbit')
+async def orbit_command(ctx, *, cmd):
+    """Route command to Orbit camera only."""
+    if CAMERA_NAME == 'orbit':
+        await _dispatch_to_command(ctx, cmd)
+
+
+@bot.command(name='gravity')
+async def gravity_command(ctx, *, cmd):
+    """Route command to Gravity camera only."""
+    if CAMERA_NAME == 'gravity':
+        await _dispatch_to_command(ctx, cmd)
+
+
+@bot.command(name='horizon')
+async def horizon_command(ctx, *, cmd):
+    """Route command to Horizon camera only."""
+    if CAMERA_NAME == 'horizon':
+        await _dispatch_to_command(ctx, cmd)
+
+
+@bot.command(name='all')
+async def all_cameras_command(ctx, *, cmd):
+    """Route command to all cameras (all bots respond)."""
+    await _dispatch_to_command(ctx, cmd)
+
+
+# --- Whiteboard Commands ---
+
+@bot.command(name='whiteboard', aliases=['read-board'], help='Show current whiteboard text')
+async def whiteboard(ctx):
+    """Show current whiteboard text content."""
+    try:
+        if not WHITEBOARD_STATUS_FILE.exists():
+            await ctx.send("❌ No whiteboard data available\n💡 Make sure whiteboard_reader_full.py is running")
+            return
+
+        status_data = json.loads(WHITEBOARD_STATUS_FILE.read_text())
+        text_content = status_data.get('text_content', [])
+
+        if not text_content:
+            await ctx.send("📋 Whiteboard is empty - no text detected")
+            return
+
+        lines = "\n".join(f"  {line}" for line in text_content)
+        await ctx.send(f"📋 **Whiteboard Text:**\n```\n{lines}\n```")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error reading whiteboard: {str(e)}")
+
+
+@bot.command(name='whiteboard-status', help='Full whiteboard status embed')
+async def whiteboard_status(ctx):
+    """Show detailed whiteboard status as a rich embed."""
+    try:
+        if not WHITEBOARD_STATUS_FILE.exists():
+            await ctx.send("❌ No whiteboard data available\n💡 Make sure whiteboard_reader_full.py is running")
+            return
+
+        status_data = json.loads(WHITEBOARD_STATUS_FILE.read_text())
+        text_detected = status_data.get('text_detected', False)
+        text_content = status_data.get('text_content', [])
+        num_regions = status_data.get('num_text_regions', 0)
+        username = status_data.get('username', 'unknown')
+        hostname = status_data.get('hostname', 'unknown')
+        timestamp = status_data.get('timestamp', 'unknown')
+
+        # Calculate timestamp age
+        age_str = "unknown"
+        try:
+            status_time = datetime.fromisoformat(timestamp)
+            age = (datetime.now() - status_time).total_seconds()
+            if age < 60:
+                age_str = f"{age:.0f}s ago"
+            elif age < 3600:
+                age_str = f"{age / 60:.0f}m ago"
+            else:
+                age_str = f"{age / 3600:.1f}h ago"
+        except (ValueError, TypeError):
+            pass
+
+        color = discord.Color.green() if text_detected else discord.Color.light_grey()
+
+        embed = discord.Embed(
+            title="📋 Whiteboard Status",
+            description="Real-time OCR status",
+            color=color
+        )
+        embed.add_field(
+            name="Text Detected",
+            value="Yes" if text_detected else "No",
+            inline=True
+        )
+        embed.add_field(name="Text Regions", value=str(num_regions), inline=True)
+        embed.add_field(name="Last Update", value=age_str, inline=True)
+        embed.add_field(
+            name="Running On",
+            value=f"{username}@{hostname}",
+            inline=True
+        )
+
+        if text_content:
+            content_preview = "\n".join(text_content[:5])
+            if len(text_content) > 5:
+                content_preview += f"\n... and {len(text_content) - 5} more lines"
+            embed.add_field(name="Text Content", value=f"```{content_preview}```", inline=False)
+
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        await ctx.send(f"❌ Error reading whiteboard status: {str(e)}")
+
+
+@bot.command(name='whiteboard-history', help='Show recent whiteboard readings')
+async def whiteboard_history(ctx, count: int = 5):
+    """Show recent whiteboard text history."""
+    try:
+        if not WHITEBOARD_HISTORY_FILE.exists():
+            await ctx.send("❌ No whiteboard history available\n💡 History is recorded when whiteboard_reader_full.py is running")
+            return
+
+        # Read last N lines from JSONL file
+        lines = WHITEBOARD_HISTORY_FILE.read_text().strip().split('\n')
+        recent = lines[-count:] if len(lines) >= count else lines
+
+        if not recent or recent == ['']:
+            await ctx.send("📋 Whiteboard history is empty")
+            return
+
+        entries = []
+        for line in recent:
+            try:
+                entry = json.loads(line)
+                ts = entry.get('timestamp', 'unknown')
+                # Shorten timestamp for display
+                try:
+                    dt = datetime.fromisoformat(ts)
+                    ts = dt.strftime("%H:%M:%S")
+                except (ValueError, TypeError):
+                    pass
+                text_lines = entry.get('text_lines', [])
+                avg_conf = entry.get('avg_confidence', 0.0)
+                text_preview = ", ".join(text_lines[:2]) if text_lines else "[no text]"
+                if len(text_preview) > 60:
+                    text_preview = text_preview[:57] + "..."
+                entries.append(f"[{ts}] conf={avg_conf:.0%} | {text_preview}")
+            except json.JSONDecodeError:
+                continue
+
+        if not entries:
+            await ctx.send("📋 No valid history entries found")
+            return
+
+        history_text = "\n".join(entries)
+        await ctx.send(f"📋 **Whiteboard History** (last {len(entries)}):\n```\n{history_text}\n```")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error reading whiteboard history: {str(e)}")
+
+
+@bot.command(name='whiteboard-screenshot', help='Get a whiteboard screenshot')
+async def whiteboard_screenshot(ctx):
+    """Send the latest whiteboard camera frame."""
+    try:
+        if not WHITEBOARD_SCREENSHOT_FILE.exists():
+            await ctx.send("❌ No whiteboard screenshot available\n💡 Make sure whiteboard_reader_full.py is running")
+            return
+
+        # Check screenshot age
+        file_age = datetime.now().timestamp() - WHITEBOARD_SCREENSHOT_FILE.stat().st_mtime
+
+        if file_age > 30:
+            await ctx.send(f"⚠️ Whiteboard screenshot is old ({file_age:.0f}s)\nCamera may not be running.")
+            return
+
+        await ctx.send(
+            f"📸 **Whiteboard Screenshot**\n🕐 Captured: {file_age:.1f}s ago",
+            file=discord.File(str(WHITEBOARD_SCREENSHOT_FILE))
+        )
+
+    except Exception as e:
+        await ctx.send(f"❌ Error sending whiteboard screenshot: {str(e)}")
+
+
+@bot.command(name='whiteboard-consensus', help='Show aggregated whiteboard reading')
+async def whiteboard_consensus(ctx):
+    """Show aggregated consensus reading from recent whiteboard history."""
+    try:
+        # Get current text from status file
+        current_text = []
+        if WHITEBOARD_STATUS_FILE.exists():
+            status_data = json.loads(WHITEBOARD_STATUS_FILE.read_text())
+            current_text = status_data.get('text_content', [])
+
+        # Read last 10 entries from history
+        if not WHITEBOARD_HISTORY_FILE.exists():
+            if current_text:
+                await ctx.send(f"📋 **Current text:** {', '.join(current_text)}\n💡 No history available for consensus")
+            else:
+                await ctx.send("❌ No whiteboard data available\n💡 Make sure whiteboard_reader_full.py is running")
+            return
+
+        lines = WHITEBOARD_HISTORY_FILE.read_text().strip().split('\n')
+        recent = lines[-10:] if len(lines) >= 10 else lines
+
+        # Count text frequency and track confidence
+        text_counts = {}
+        text_confidences = {}
+        for line in recent:
+            try:
+                entry = json.loads(line)
+                for text in entry.get('text_lines', []):
+                    text_lower = text.lower()
+                    text_counts[text_lower] = text_counts.get(text_lower, 0) + 1
+                    conf = entry.get('avg_confidence', 0.0)
+                    if text_lower not in text_confidences:
+                        text_confidences[text_lower] = []
+                    text_confidences[text_lower].append(conf)
+            except json.JSONDecodeError:
+                continue
+
+        if not text_counts:
+            await ctx.send("📋 No text found in recent history")
+            return
+
+        # Sort by frequency
+        sorted_texts = sorted(text_counts.items(), key=lambda x: x[1], reverse=True)
+
+        result_lines = []
+        for text, count in sorted_texts[:5]:
+            confs = text_confidences.get(text, [0.0])
+            min_conf = min(confs)
+            max_conf = max(confs)
+            conf_range = f"{min_conf:.0%}-{max_conf:.0%}" if min_conf != max_conf else f"{max_conf:.0%}"
+            result_lines.append(f'  "{text}" - seen {count}x (confidence: {conf_range})')
+
+        consensus_text = "\n".join(result_lines)
+        await ctx.send(f"📋 **Whiteboard Consensus** (last {len(recent)} readings):\n```\n{consensus_text}\n```")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error computing consensus: {str(e)}")
+
+
+@bot.command(name='set-confidence', help='Set OCR confidence threshold (0.0-1.0)')
+async def set_confidence(ctx, value: float):
+    """Write confidence threshold to whiteboard config file."""
+    try:
+        if value < 0.0 or value > 1.0:
+            await ctx.send("❌ Confidence must be between 0.0 and 1.0")
+            return
+
+        # Read existing config or start fresh
+        config = {}
+        if WHITEBOARD_CONFIG_FILE.exists():
+            try:
+                config = json.loads(WHITEBOARD_CONFIG_FILE.read_text())
+            except json.JSONDecodeError:
+                pass
+
+        config['confidence'] = value
+        WHITEBOARD_CONFIG_FILE.write_text(json.dumps(config, indent=2))
+        await ctx.send(f"✅ Confidence threshold set to **{value}**\n💡 Whiteboard reader will pick this up within a few seconds")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error setting confidence: {str(e)}")
+
+
+@bot.command(name='set-fps', help='Set camera FPS (1-30)')
+async def set_fps(ctx, value: int):
+    """Write FPS to whiteboard config file."""
+    try:
+        if value < 1 or value > 30:
+            await ctx.send("❌ FPS must be between 1 and 30")
+            return
+
+        # Read existing config or start fresh
+        config = {}
+        if WHITEBOARD_CONFIG_FILE.exists():
+            try:
+                config = json.loads(WHITEBOARD_CONFIG_FILE.read_text())
+            except json.JSONDecodeError:
+                pass
+
+        config['fps_limit'] = value
+        WHITEBOARD_CONFIG_FILE.write_text(json.dumps(config, indent=2))
+        await ctx.send(f"✅ FPS limit set to **{value}**\n💡 Note: FPS changes require a pipeline restart to take effect")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error setting FPS: {str(e)}")
+
+
+@bot.command(name='toggle-notifications', help='Toggle Discord notifications')
+async def toggle_notifications(ctx):
+    """Toggle notifications_enabled in whiteboard config."""
+    try:
+        # Read existing config or start fresh
+        config = {}
+        if WHITEBOARD_CONFIG_FILE.exists():
+            try:
+                config = json.loads(WHITEBOARD_CONFIG_FILE.read_text())
+            except json.JSONDecodeError:
+                pass
+
+        current = config.get('notifications_enabled', True)
+        config['notifications_enabled'] = not current
+        WHITEBOARD_CONFIG_FILE.write_text(json.dumps(config, indent=2))
+
+        new_state = "ENABLED" if not current else "DISABLED"
+        emoji = "🔔" if not current else "🔕"
+        await ctx.send(f"{emoji} Notifications are now **{new_state}**")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error toggling notifications: {str(e)}")
+
+
 @bot.command(name='help', help='Show available commands')
 async def help_command(ctx):
     """Display help message with all available commands."""
-    help_text = """
-**🤖 OAK-D Camera Bot Commands**
+    help_text = f"""
+**🤖 OAK-D Camera Bot** (this is **{CAMERA_NAME}**)
 
+**Camera:**
 `!ping` - Test if bot is alive
 `!status` - Check if camera is running
 `!detect` - Get current detection status
 `!screenshot` - Get a live image from camera
+
+**Whiteboard:**
+`!whiteboard` (or `!read-board`) - Show current whiteboard text
+`!whiteboard-status` - Full whiteboard status embed
+`!whiteboard-history [count]` - Show recent readings (default 5)
+`!whiteboard-screenshot` - Get whiteboard camera image
+`!whiteboard-consensus` - Show aggregated reading
+
+**Whiteboard Config:**
+`!set-confidence <0.0-1.0>` - Set OCR confidence threshold
+`!set-fps <1-30>` - Set camera FPS
+`!toggle-notifications` - Toggle Discord notifications
+
+**Multi-Camera:**
+`!orbit <command>` - Send command to Orbit only
+`!gravity <command>` - Send command to Gravity only
+`!horizon <command>` - Send command to Horizon only
+`!all <command>` - Send command to all cameras
+
 `!help` - Show this message
 
 **💡 Tips:**
-• Camera must be running to get detection data
-• Screenshots are captured every 5 seconds
-• Use `!status` to check if camera is online
+• Use `!orbit status` to target a specific camera
+• Use `!all screenshot` to get images from all cameras
+• Bare commands (e.g. `!status`) are answered by all bots
     """
     await ctx.send(help_text)
 
@@ -217,9 +595,13 @@ bot.send_alert = send_alert
 # --- Main ---
 
 if __name__ == '__main__':
-    print("Starting Discord bot...")
+    print(f"Starting Discord bot for camera: {CAMERA_NAME}")
     print(f"Command prefix: !")
+    print(f"Camera routing: !{CAMERA_NAME} <command> (targeted), !all <command> (broadcast)")
     print("Commands: !ping, !status, !detect, !screenshot, !help")
+    print("Whiteboard: !whiteboard, !whiteboard-status, !whiteboard-history,")
+    print("           !whiteboard-screenshot, !whiteboard-consensus")
+    print("Config: !set-confidence, !set-fps, !toggle-notifications")
     print("\nPress Ctrl+C to stop\n")
 
     try:

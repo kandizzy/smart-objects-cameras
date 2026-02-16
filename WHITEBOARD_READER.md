@@ -391,21 +391,25 @@ python3 discord_notifier.py "Test message"
 | **Debounce** | 1.5 seconds | 1.5 seconds | 2.0 seconds |
 | **Status File** | `camera_status.json` | `fatigue_status.json` | `whiteboard_status.json` |
 
+## Implemented Features (whiteboard_reader_full.py)
+
+The full reader includes five integrated features:
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **1. Text History** | ✅ | JSONL logging of every OCR reading for time-series analysis |
+| **2. Change Detection** | ✅ | Detects NEW, EDITED, REMOVED, CAMERA_MOVED, MIXED changes |
+| **3. Conversational Messages** | ✅ | Natural language announcements instead of robotic status |
+| **4. Confidence Aggregation** | ✅ | Rolling buffer clusters similar readings for consensus text |
+| **5. Smart Feedback** | ✅ | Actionable tips about camera position, lighting, distance |
+
+See `WHITEBOARD_HISTORY.md` for detailed descriptions of each feature.
+
 ## Future Enhancements
 
 **Possible Student Projects:**
 
-1. **Full Text Recognition**
-   - Currently only detects text regions
-   - Add Stage 2 recognition to extract actual text
-   - Store recognized text in status file
-
-2. **Text Change Tracking**
-   - Compare text between frames
-   - Notify only when text content changes
-   - Create "diff" view showing additions/deletions
-
-3. **Text-to-Speech**
+1. **Text-to-Speech**
    - Read detected text aloud
    - Useful for accessibility
    - Use `pyttsx3` or cloud TTS
