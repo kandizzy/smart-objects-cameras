@@ -36,6 +36,32 @@ FPS = 30  # Match clip_recorder.py
 
 OAK_PROJECTS = Path.home() / "oak-projects"
 
+# ── Classroom API integration ────────────────────────────────────────────────
+CLASSROOM_API_URL = os.getenv("CLASSROOM_API_URL", "")
+CLASSROOM_API_KEY = os.getenv("CLASSROOM_API_KEY", "")
+
+
+def push_to_classroom(camera_id: str, predicted_class: str, confidence: float,
+                      class_probs: dict):
+    """Push classification to the classroom API (fire-and-forget)."""
+    if not CLASSROOM_API_URL:
+        return
+    try:
+        requests.post(
+            f"{CLASSROOM_API_URL.rstrip('/')}/push/state",
+            json={
+                "camera_id": camera_id,
+                "predicted_class": predicted_class,
+                "prediction_confidence": confidence,
+                "class_probs": class_probs,
+            },
+            headers={"X-API-Key": CLASSROOM_API_KEY},
+            timeout=2,
+        )
+    except Exception:
+        pass  # Never block the detection loop
+
+
 def get_status_file(camera_name: str) -> Path:
     return OAK_PROJECTS / f"probe_status_{camera_name}.json"
 
@@ -332,6 +358,9 @@ def main():
                     # Append history
                     with open(get_history_file(args.name), "a") as f:
                         f.write(json.dumps(status) + "\n")
+
+                    # Push to classroom API
+                    push_to_classroom(args.name, pred_class, confidence, pred["class_probs"])
 
                     # Display
                     if args.display and ret:
