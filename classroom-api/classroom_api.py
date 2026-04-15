@@ -59,6 +59,9 @@ try:
 except ImportError:
     SSE_AVAILABLE = False
 
+import orchestrator
+from orchestrator import Phase, Salience, RoutedEvents
+
 try:
     from supabase import create_client, Client
     SUPABASE_AVAILABLE = True
@@ -102,7 +105,13 @@ else:
 _camera_states: dict[str, dict] = {}  # camera_id -> latest state
 _previous_states: dict[str, dict] = {}  # for change detection
 _state_subscribers: list[asyncio.Queue] = []  # SSE subscribers
-_event_subscribers: list[asyncio.Queue] = []  # SSE event subscribers
+# event subscribers carry a subscriber_id so the orchestrator can route
+# DIRECTED events to specific recipients (e.g. "prof-dm")
+_event_subscribers: list[tuple[str, asyncio.Queue]] = []
+
+# Load persisted phase state at module load so requests see the right phase
+# even before __main__ runs (e.g., when served by `uvicorn classroom_api:app`)
+orchestrator.load_phase_state()
 
 # ── Pydantic models ──────────────────────────────────────────────────────────
 
@@ -126,6 +135,10 @@ class PushStateRequest(BaseModel):
 class ProjectEventRequest(BaseModel):
     event_type: str
     payload: dict = {}
+
+
+class SetPhaseRequest(BaseModel):
+    phase: str  # must match a Phase enum value
 
 
 # ── Room mode computation ────────────────────────────────────────────────────
@@ -281,16 +294,26 @@ async def broadcast_state(state_snapshot: dict):
         _state_subscribers.remove(q)
 
 
-async def broadcast_event(event: dict):
-    """Push a classroom event to all SSE event subscribers."""
-    dead = []
-    for q in _event_subscribers:
-        try:
-            q.put_nowait(event)
-        except asyncio.QueueFull:
-            dead.append(q)
-    for q in dead:
-        _event_subscribers.remove(q)
+async def broadcast_events_routed(routed: RoutedEvents):
+    """Deliver events to SSE subscribers according to their salience.
+
+    - BROADCAST events go to every subscriber.
+    - DIRECTED events go only to subscribers whose subscriber_id is in the
+      rule's targets list.
+    - AMBIENT events are NOT delivered over SSE — they live in the log only.
+    """
+    dead: list[tuple[str, asyncio.Queue]] = []
+    for sub_id, q in _event_subscribers:
+        events_for_sub = routed.for_subscriber(sub_id)
+        for event in events_for_sub:
+            try:
+                q.put_nowait(event)
+            except asyncio.QueueFull:
+                dead.append((sub_id, q))
+                break
+    for item in dead:
+        if item in _event_subscribers:
+            _event_subscribers.remove(item)
 
 
 # ── FastAPI app ──────────────────────────────────────────────────────────────
@@ -511,21 +534,31 @@ async def push_state(req: PushStateRequest, x_api_key: str = Header(None)):
     # Broadcast to SSE subscribers
     state_snapshot = get_state()
     await broadcast_state(state_snapshot)
-    for event in events:
-        await broadcast_event(event)
 
+    # Orchestrator routes events by salience based on the active phase.
+    # AMBIENT events are persisted (above) but suppressed from SSE fan-out;
+    # DIRECTED events go only to matching subscribers.
+    active_phase = orchestrator.current_phase()
+    routed = orchestrator.route(events, active_phase)
+    await broadcast_events_routed(routed)
+
+    counts = routed.counts()
     log.info(
         f"[{camera_id}] pushed — persons={merged.get('person_count', '?')}, "
         f"probe={merged.get('predicted_class', '?')}, "
         f"mode={merged.get('room_mode', '?')}, "
-        f"events={len(events)}"
+        f"phase={active_phase.value}, "
+        f"events={len(events)} "
+        f"(b={counts['broadcast']} a={counts['ambient']} d={counts['directed']})"
     )
 
     return {
         "ok": True,
         "camera_id": camera_id,
         "room_mode": merged["room_mode"],
+        "phase": active_phase.value,
         "events_emitted": len(events),
+        "routing": counts,
     }
 
 
@@ -602,9 +635,15 @@ async def subscribe_state(request: Request):
 @app.get("/subscribe/events")
 async def subscribe_events(
     request: Request,
+    subscriber_id: str = Query("anonymous", description="identifier for DIRECTED routing"),
     event_type: Optional[str] = None,
 ):
-    """Server-Sent Events stream of classroom events."""
+    """Server-Sent Events stream of classroom events.
+
+    Pass `subscriber_id` as a query param to receive DIRECTED events targeted
+    at that ID (e.g. `?subscriber_id=prof-dm`). Defaults to "anonymous", which
+    only receives BROADCAST events.
+    """
     if not SSE_AVAILABLE:
         raise HTTPException(
             status_code=501,
@@ -612,7 +651,8 @@ async def subscribe_events(
         )
 
     queue: asyncio.Queue = asyncio.Queue(maxsize=50)
-    _event_subscribers.append(queue)
+    subscriber = (subscriber_id, queue)
+    _event_subscribers.append(subscriber)
 
     async def event_generator():
         try:
@@ -628,10 +668,74 @@ async def subscribe_events(
                 except asyncio.TimeoutError:
                     yield {"event": "ping", "data": ""}
         finally:
-            if queue in _event_subscribers:
-                _event_subscribers.remove(queue)
+            if subscriber in _event_subscribers:
+                _event_subscribers.remove(subscriber)
 
     return EventSourceResponse(event_generator())
+
+
+# ── PHASE / ORCHESTRATOR ENDPOINTS ───────────────────────────────────────────
+
+@app.get("/phase")
+def get_phase():
+    """Current session phase, start time, and duration."""
+    return orchestrator.phase_status()
+
+
+@app.post("/phase")
+async def set_phase(req: SetPhaseRequest, x_api_key: str = Header(None)):
+    """Transition to a new phase. Emits a `phase_change` event that
+    is always broadcast to every SSE subscriber."""
+    verify_detector_key(x_api_key)
+
+    try:
+        new_phase = Phase(req.phase.lower())
+    except ValueError:
+        valid = ", ".join(p.value for p in Phase)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid phase '{req.phase}'. Valid: {valid}",
+        )
+
+    phase_change_event = orchestrator.set_phase(new_phase)
+
+    # Persist to Supabase event log if available
+    if supabase:
+        try:
+            supabase.table("classroom_events").insert({
+                "camera_id": "__orchestrator__",
+                "event_type": "phase_change",
+                "payload": phase_change_event["payload"],
+                "source": "orchestrator",
+            }).execute()
+        except Exception as e:
+            log.error(f"Supabase phase_change insert failed: {e}")
+
+    # Broadcast the phase_change event. ALWAYS_BROADCAST ensures it hits
+    # every subscriber regardless of the new phase's policy.
+    routed = orchestrator.route([phase_change_event], new_phase)
+    await broadcast_events_routed(routed)
+
+    log.info(
+        f"[orchestrator] phase → {new_phase.value} "
+        f"(was {phase_change_event['payload']['old_phase']})"
+    )
+
+    return {
+        "ok": True,
+        "phase": new_phase.value,
+        "started_at": phase_change_event["payload"]["started_at"],
+    }
+
+
+@app.get("/phase/policy")
+def get_phase_policy():
+    """Full routing policy by phase. Useful for debugging, the TUI
+    phase strip, and the white paper's routing diagram."""
+    return {
+        "current_phase": orchestrator.current_phase().value,
+        "policies": orchestrator.policy_snapshot(),
+    }
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

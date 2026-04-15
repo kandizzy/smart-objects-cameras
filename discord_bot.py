@@ -531,6 +531,24 @@ async def toggle_notifications(ctx):
 # --- Classroom API Commands (reads from Supabase via classroom_api.py) ---
 
 CLASSROOM_API_URL = os.getenv("CLASSROOM_API_URL", "")
+CLASSROOM_API_KEY = os.getenv("CLASSROOM_API_KEY", "")
+
+VALID_PHASES = {"arrival", "lecture", "activity", "conclude", "departure", "unknown"}
+
+PHASE_EMOJI = {
+    "arrival": "🚪",
+    "lecture": "🎓",
+    "activity": "🤝",
+    "conclude": "📝",
+    "departure": "👋",
+    "unknown": "❓",
+}
+
+SALIENCE_EMOJI = {
+    "broadcast": "📢",
+    "ambient": "🤫",
+    "directed": "📬",
+}
 
 
 @bot.command(name='classroom', help='Show full classroom state from Supabase')
@@ -606,6 +624,115 @@ async def mode_command(ctx):
         await ctx.send(f"❌ Classroom API error: {e}")
 
 
+@bot.command(name='phase', help='Show or set the current classroom phase')
+async def phase_command(ctx, *, arg: str = ""):
+    """Orchestrator phase control.
+
+    Usage:
+      !phase               — show current phase and duration
+      !phase <name>        — transition to a new phase
+                             (arrival, lecture, activity, conclude, departure, unknown)
+      !phase policy        — show the full routing policy table
+    """
+    if not CLASSROOM_API_URL:
+        await ctx.send("❌ `CLASSROOM_API_URL` not configured in .env")
+        return
+
+    import requests
+    arg = arg.strip().lower()
+
+    # --- Subcommand: policy ---
+    if arg == "policy":
+        try:
+            r = requests.get(f"{CLASSROOM_API_URL}/phase/policy", timeout=5)
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            await ctx.send(f"❌ Classroom API error: {e}")
+            return
+
+        current = data.get("current_phase", "unknown")
+        policies = data.get("policies", {})
+
+        lines = [f"**Routing policy** (current: {PHASE_EMOJI.get(current, '❓')} **{current.upper()}**)", ""]
+        for phase_name, rules in policies.items():
+            marker = "▶" if phase_name == current else " "
+            emoji = PHASE_EMOJI.get(phase_name, "")
+            lines.append(f"{marker} {emoji} **{phase_name.upper()}**")
+            if not rules:
+                lines.append("     _(pass-through — everything broadcasts)_")
+                continue
+            for rule in rules:
+                sal = rule["salience"]
+                sal_emoji = SALIENCE_EMOJI.get(sal, "")
+                types = ", ".join(rule["event_types"])
+                targets = ""
+                if rule["targets"]:
+                    targets = f" → `{', '.join(rule['targets'])}`"
+                lines.append(f"     {sal_emoji} `{types}` — {sal}{targets}")
+            lines.append("")
+
+        # Discord messages cap at 2000 chars; trim if needed
+        msg = "\n".join(lines)
+        if len(msg) > 1900:
+            msg = msg[:1900] + "\n_(truncated)_"
+        await ctx.send(msg)
+        return
+
+    # --- No arg: show current phase status ---
+    if not arg:
+        try:
+            r = requests.get(f"{CLASSROOM_API_URL}/phase", timeout=5)
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            await ctx.send(f"❌ Classroom API error: {e}")
+            return
+
+        phase = data.get("phase", "unknown")
+        duration = data.get("duration_sec", 0)
+        emoji = PHASE_EMOJI.get(phase, "❓")
+
+        mins, secs = divmod(int(duration), 60)
+        duration_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+
+        await ctx.send(
+            f"{emoji} **Phase: {phase.upper()}** — running for `{duration_str}`\n"
+            f"_Use `!phase <name>` to transition, or `!phase policy` to see routing rules._"
+        )
+        return
+
+    # --- Arg is a phase name: transition ---
+    if arg not in VALID_PHASES:
+        valid = ", ".join(sorted(VALID_PHASES))
+        await ctx.send(f"❌ Unknown phase `{arg}`. Valid: {valid}")
+        return
+
+    if not CLASSROOM_API_KEY:
+        await ctx.send("❌ `CLASSROOM_API_KEY` not set — can't authorize phase transitions")
+        return
+
+    try:
+        r = requests.post(
+            f"{CLASSROOM_API_URL}/phase",
+            json={"phase": arg},
+            headers={"X-API-Key": CLASSROOM_API_KEY},
+            timeout=5,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        await ctx.send(f"❌ Classroom API error: {e}")
+        return
+
+    new_phase = data.get("phase", arg)
+    emoji = PHASE_EMOJI.get(new_phase, "❓")
+    await ctx.send(
+        f"{emoji} Transitioned to **{new_phase.upper()}** — "
+        f"_routing policy is now active for this phase._"
+    )
+
+
 @bot.command(name='help', help='Show available commands')
 async def help_command(ctx):
     """Display help message with all available commands."""
@@ -633,6 +760,11 @@ async def help_command(ctx):
 **Classroom (Supabase):**
 `!classroom` - Full classroom state from all cameras
 `!mode` - Current room mode (solo/duo/group/focus/presentation)
+
+**Orchestrator:**
+`!phase` - Show current session phase
+`!phase <name>` - Transition to arrival/lecture/activity/conclude/departure
+`!phase policy` - Show the full routing policy table
 
 **Multi-Camera:**
 `!orbit <command>` - Send command to Orbit only
