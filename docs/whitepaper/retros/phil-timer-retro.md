@@ -1,38 +1,32 @@
-# Project: <your project name>
+# Project: Timer
 
-**Student:** <your name>
-**Camera used:** orbit / gravity / horizon (delete the ones you didn't use)
-**One-line pitch:** <what your project does, in plain words — no jargon>
+**Student:** Phil Cote
 
----
+**Camera used:** Horizon
+
+**One-line pitch:** A 60-min timer for **whiteboard** | **group work** | **focus time** using magnetic fiducial markers (arUco) and CV. The timer's behavior depends on what horizon sees.
 
 ## What I tried
 
-Two or three sentences. No code. Describe the idea and the approach a non-engineer would understand.
-
-> Example: *I wanted the room to notice when students stopped paying attention during a lecture. I used the fatigue detector on the horizon camera and tried to combine it with gaze direction so it would only alert when someone was both tired and looking away from the board.*
+> *I wanted to create an intuitive, casual, and tactile timer experience for both teachers and students. I started by seeing if Horizon could see handwriting. I also tried using Teachable Machine image model training — first using hand gestures, then numbers. Next, I tried Hand Detection, which worked better than the model training, but still difficult to think of how it would be sensed by the classroom consistently. Finally, I arrived at arUco tags attached to magnetically reinforced foam core, which were cheap and easy to produce.*
 
 ## What worked
 
-Two or three bullet points. Be specific — "detected a person 3 meters away reliably" is better than "it worked."
+• The arUco tags where the most responsive of all the interactions I tested — code is open-source so it was easy for Claude to find it when errors came up.
 
--
--
--
+• The hand detection iteration technically worked, however it felt too limiting for the purpose of the timer.
+
+• The hand written commands were successful in capturing the feel of a non-screen interaction.
 
 ## What broke
 
-Two or three bullet points. **Be honest.** False positives, weird edge cases, things you'd warn the next student about. This is the most valuable section of your retro — don't skip it.
+• Image model training did not work as well as I'd hoped — I learned that it's better for predicting specific objects, not interpreting commands.
 
--
--
--
+• I have yet to resolve the positioning and mounting of the camera in a way which disappears for people without losing sight.
 
-## One screenshot
+## Screenshot
 
-Put your screenshot in `docs/whitepaper/artifacts/` using the naming convention `<firstname>-<project>-screenshot.png`, then link to it here:
-
-![](../artifacts/<firstname>-<project>-screenshot.png)
+<img src="../artifacts/phil-timer-screenshot.png" width="400">
 
 Caption: one sentence describing what we're looking at.
 
@@ -40,11 +34,19 @@ Caption: one sentence describing what we're looking at.
 
 One paragraph. What's the next move? What would you add, fix, or rethink? If a future student picked this up, what should they know first?
 
+**Next Move:**
+
+**Add:**
+
+**Fix:**
+
+**Rethink:**
+
 ---
 
 *Submission checklist:*
-- [ ] File named `<firstname>-<project>-retro.md` and placed in `docs/whitepaper/retros/`
-- [ ] Screenshot added to `docs/whitepaper/artifacts/` and linked above
-- [ ] "What broke" section is honest and specific
-- [ ] No code snippets — this is a story, not a tutorial
+- [x] File named `<firstname>-<project>-retro.md` and placed in `docs/whitepaper/retros/`
+- [x] Screenshot added to `docs/whitepaper/artifacts/` and linked above
+- [x] "What broke" section is honest and specific
+- [x] No code snippets — this is a story, not a tutorial
 - [ ] Opened as a pull request, not pushed to `main`
