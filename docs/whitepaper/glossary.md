@@ -21,14 +21,14 @@ One of you owns each row. Your job: explain your assigned term in **two sentence
 | DepthAI pipeline |  |  |  |
 | Temporal debouncing |  |  |  |
 | Head pose |  |  |  |
-| Gaze vector |  |  |  |
+| Gaze1 vector |  |  |  |
 | Webhook |  |  |  |
 | Event loop |  |  |  |
 | Supabase |  |  |  |
 | API endpoint |  |  |  |
 | Room mode | Gordon |  |  |
 | V-JEPA | Gordon |  |  |
-| Whiteboard OCR |  |  |  |
+| Whiteboard OCR | Phil | A way for a computer to recognize and extract text from images — in this case, a live feed of a classroom whiteboard. | Think of OCR as a translator: the camera captures the scene as pixels, and OCR interprets those pixel patterns as letters and words. |
 | Stereo depth |  |  |  |
 | Neural network stage |  |  |  |
 | Fatigue debounce |  |  |  |

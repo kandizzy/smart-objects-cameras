@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Smart Classroom — Interaction Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-heading: "Instrument Serif", Georgia, "Times New Roman", serif;
+    --font-sans: "Inter", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", "Consolas", monospace;
+    --text-primary: #1c1917;
+    --text-secondary: #57534e;
+    --text-muted: #a8a29e;
+    --border-subtle: #e7e5e4;
+    --bg-page: #fafaf9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg-page); color: var(--text-secondary); font-family: var(--font-sans); overflow: hidden; }
+  #nav { position: fixed; top: 40px; left: 0; right: 0; height: 50px; background: var(--bg-page); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 100; }
+  #nav-left a { font-size: 1rem; font-family: var(--font-mono); color: var(--text-muted); text-decoration: none; border-bottom: 1px solid var(--border-subtle); transition: color 0.15s; }
+  #nav-left a:hover { color: var(--text-secondary); }
+  #nav-right a { font-size: 1rem; font-family: var(--font-mono); color: var(--text-muted); text-decoration: none; border-bottom: 1px solid var(--border-subtle); transition: color 0.15s; }
+  #nav-right a:hover { color: var(--text-secondary); }
+  #nav-title { font-family: var(--font-heading); font-size: 2.0rem; font-style: italic; font-weight: 400; color: var(--text-primary); letter-spacing: -0.01em; }
+  #caption { font-size: 0.715rem; font-weight: 600; letter-spacing: 0.25em; text-transform: uppercase; color: var(--text-muted); margin-top: 2px; }
+  #svg { position: fixed; top: 90px; left: 0; }
+  #legend { display: none; }
+  .leg { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #aaa; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  #tooltip {
+    position: fixed; pointer-events: none; background: #1e2130; border: 1px solid #333;
+    border-radius: 8px; padding: 12px 16px; font-size: 14px; max-width: 280px;
+    line-height: 1.6; opacity: 0; transition: opacity .15s; z-index: 200;
+    font-family: var(--font-mono);
+  }
+  #tooltip strong { display: block; margin-bottom: 6px; font-size: 15px; color: #fff; font-family: var(--font-mono); }
+  line { stroke-opacity: .35; }
+  circle { cursor: pointer; transition: r .15s; }
+  text { pointer-events: none; user-select: none; font-family: var(--font-mono); }
+  #svg { font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+<nav id="nav">
+  <div id="nav-left">
+    <a href="index.html">&larr; Back to docs</a>
+  </div>
+  <div id="nav-center">
+    <div id="nav-title">Smart Classroom — Interaction Map</div>
+    <div id="caption">Created 03/22/26 from FigJam board — archival snapshot. Projects have changed.</div>
+  </div>
+  <div id="nav-right">
+    <a href="smart-classroom-projects.md" download>Download project descriptions (.md) &darr;</a>
+  </div>
+</nav>
+<div id="legend"></div>
+<div id="tooltip"></div>
+<svg id="svg"></svg>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+const CATS = [
+  { id: "gesture",     label: "Gesture Detection",    color: "#f4845f" },
+  { id: "cv",          label: "Computer Vision",       color: "#e05c8a" },
+  { id: "voice",       label: "Voice & Audio",         color: "#a78bfa" },
+  { id: "projection",  label: "Projection & Display",  color: "#38bdf8" },
+  { id: "presence",    label: "Presence Sensing",      color: "#34d399" },
+  { id: "ai",          label: "AI & NLP",              color: "#fbbf24" },
+  { id: "physical",    label: "Physical Input",        color: "#f87171" },
+  { id: "env",         label: "Environmental Control", color: "#94a3b8" },
+];
+
+const PROJECTS = [
+  { id: "darren",   label: "Imprint",              author: "Darren",  cats: ["gesture","cv","projection"],          desc: "Camera reads handwriting off any surface and projects notes back." },
+  { id: "feifey",   label: "Focus Beam",           author: "Feifey",  cats: ["gesture","cv","projection"],          desc: "Detects instructor pointing gestures and highlights the slide area." },
+  { id: "gordon",   label: "Smart Stage",          author: "Gordon",  cats: ["presence","voice","ai","projection"], desc: "Auto lighting, recording, live captions, and AI lecture summaries." },
+  { id: "juju",     label: "The Virtual Gus",      author: "Juju",    cats: ["presence","cv","projection"],         desc: "Live-streams Gus the dog into the studio via segmentation." },
+  { id: "kathy",    label: "NodCheck",             author: "Kathy",   cats: ["gesture","cv"],                       desc: "Detects student head nods/shakes to gauge comprehension." },
+  { id: "kevin",    label: "Sleep Detection",      author: "Kevin",   cats: ["cv","projection"],                    desc: "Detects sleeping students and triggers a public wake-up alert." },
+  { id: "mingyue1", label: "Smart Room Finder",    author: "Mingyue", cats: ["presence","env","cv"],                desc: "Real-time room occupancy map with tap-to-reserve and lighting cues." },
+  { id: "mingyue2", label: "Procrastination Room", author: "Mingyue", cats: ["presence","env"],                    desc: "A time-bounded break room that tracks usage and resets focus." },
+  { id: "mingyue3", label: "Sleep Detection Chair",author: "Mingyue", cats: ["cv","physical"],                     desc: "Chair moves sleeping student to front of room automatically." },
+  { id: "phil",     label: "Hand Timer",           author: "Phil",    cats: ["gesture","voice"],                    desc: "Browser-based countdown timer controlled entirely by hand gestures." },
+  { id: "ramon",    label: "E-Wall",               author: "Ramon",   cats: ["gesture","cv","projection"],          desc: "Projection mapping that reacts to presenter body gestures." },
+  { id: "seren1",   label: "Mode Changing Room",   author: "Seren",   cats: ["presence","env","voice","ai"],        desc: "Room auto-shifts music, lights, and content based on occupancy/context." },
+  { id: "seren2",   label: "Echo Desk",            author: "Seren",   cats: ["voice","ai"],                         desc: "Students type; Raspberry Pi speaks for them in the classroom." },
+  { id: "seren3",   label: "CalmBall",             author: "Seren",   cats: ["physical","env"],                     desc: "Squeeze pressure triggers calming audio through the room speaker." },
+  { id: "shuyang",  label: "Assignment Tracker",   author: "Shuyang", cats: ["cv","ai"],                            desc: "Ambient AI agent that scans docs, extracts deadlines, and reminds you." },
+  { id: "sophie",   label: "Forest in Classroom",  author: "Sophie",  cats: ["voice","cv","projection"],            desc: "Emotion input grows plants on the projected wall in a living ecosystem." },
+  { id: "yuxuan",   label: "English Feedback",     author: "Yuxuan",  cats: ["voice","cv","ai"],                    desc: "Listens for grammar mistakes and gives private visual feedback." },
+];
+
+const catMap = Object.fromEntries(CATS.map(c => [c.id, c]));
+
+// Build nodes + links
+const nodes = [
+  ...CATS.map(c => ({ ...c, type: "cat", r: 38 })),
+  ...PROJECTS.map(p => ({ ...p, type: "project", r: 18 })),
+];
+const links = [];
+PROJECTS.forEach(p => p.cats.forEach(cid => links.push({ source: p.id, target: cid })));
+
+// Legend
+const legend = document.getElementById("legend");
+CATS.forEach(c => {
+  const row = document.createElement("div"); row.className = "leg";
+  row.innerHTML = `<div class="leg-dot" style="background:${c.color}"></div>${c.label}`;
+  legend.appendChild(row);
+});
+
+const NAV_H = 90;
+let W = window.innerWidth, H = window.innerHeight - NAV_H;
+const svg = d3.select("#svg").attr("width", W).attr("height", H);
+const tip = document.getElementById("tooltip");
+
+const sim = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(links).id(d => d.id).distance(d => d.target.type === "cat" ? 240 : 180).strength(.5))
+  .force("charge", d3.forceManyBody().strength(d => d.type === "cat" ? -1800 : -700))
+  .force("center", d3.forceCenter(W / 2, H / 2.8))
+  .force("collide", d3.forceCollide(d => d.r + 55));
+
+const link = svg.append("g").selectAll("line").data(links).join("line")
+  .attr("stroke", d => catMap[d.target.id]?.color ?? catMap[d.target]?.color ?? "#555")
+  .attr("stroke-width", 2);
+
+const node = svg.append("g").selectAll("g").data(nodes).join("g")
+  .call(d3.drag()
+    .on("start", (e, d) => { if (!e.active) sim.alphaTarget(.3).restart(); d.fx = d.x; d.fy = d.y; })
+    .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
+    .on("end",   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+  );
+
+node.append("circle")
+  .attr("r", d => d.r)
+  .attr("fill", d => d.type === "cat" ? d.color : (() => { const c = catMap[d.cats[0]]; return c ? c.color : "#555"; })())
+  .attr("stroke", d => d.type === "cat" ? "none" : (() => {
+    const c = catMap[d.cats[0]]; return c ? c.color : "#555";
+  })())
+  .attr("stroke-width", 2);
+
+node.append("text")
+  .attr("text-anchor", "middle")
+  .attr("dy", d => d.type === "cat" ? `${d.r + 18}px` : "-1.6em")
+  .attr("fill", d => d.type === "cat" ? "#0f1117" : "#111")
+  .attr("font-size", d => d.type === "cat" ? 12 : 13)
+  .attr("font-weight", d => d.type === "cat" ? "700" : "600")
+  .text(d => d.type === "cat" ? d.label.split(" ")[0] : d.label);
+
+node.append("text")
+  .filter(d => d.type === "cat")
+  .attr("text-anchor", "middle")
+  .attr("dy", d => `${d.r + 34}px`)
+  .attr("fill", "#0f1117").attr("font-size", 12).attr("font-weight", "700")
+  .text(d => d.label.split(" ").slice(1).join(" "));
+
+// Author label under project nodes
+node.filter(d => d.type === "project").append("text")
+  .attr("text-anchor", "middle").attr("dy", "2.4em")
+  .attr("fill", "#333").attr("font-size", 12)
+  .text(d => d.author);
+
+// Tooltip
+node.on("mousemove", (e, d) => {
+    const cats = d.type === "project"
+      ? d.cats.map(c => catMap[c].label).join(", ")
+      : PROJECTS.filter(p => p.cats.includes(d.id)).map(p => p.label).join(", ");
+    tip.innerHTML = d.type === "project"
+      ? `<strong>${d.label} — ${d.author}</strong>${d.desc}<br><span style="color:#666;font-size:10px;margin-top:4px;display:block">${cats}</span>`
+      : `<strong>${d.label}</strong>Projects: ${cats}`;
+    tip.style.opacity = 1;
+    tip.style.left = (e.clientX + 14) + "px";
+    tip.style.top  = (e.clientY - 10) + "px";
+  })
+  .on("mouseleave", () => tip.style.opacity = 0);
+
+// Highlight on click
+node.on("click", (e, d) => {
+  const related = new Set();
+  if (d.type === "project") { related.add(d.id); d.cats.forEach(c => related.add(c)); }
+  else { related.add(d.id); PROJECTS.filter(p => p.cats.includes(d.id)).forEach(p => related.add(p.id)); }
+  node.attr("opacity", n => related.has(n.id) ? 1 : .1);
+  link.attr("opacity", l => related.has(l.source.id) && related.has(l.target.id) ? 1 : .05);
+  e.stopPropagation();
+});
+svg.on("click", () => {
+  node.attr("opacity", 1);
+  link.attr("opacity", 1);
+});
+
+const PAD = 60;
+sim.on("tick", () => {
+  nodes.forEach(d => {
+    d.x = Math.max(d.r + PAD, Math.min(W - d.r - PAD, d.x));
+    d.y = Math.max(d.r + PAD, Math.min(H - d.r - PAD, d.y));
+  });
+  link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+  node.attr("transform", d => `translate(${d.x},${d.y})`);
+});
+
+new ResizeObserver(() => {
+  W = window.innerWidth;
+  H = window.innerHeight - NAV_H;
+  svg.attr("width", W).attr("height", H);
+  sim.force("center", d3.forceCenter(W / 2, H / 2));
+  sim.alpha(0.3).restart();
+}).observe(document.body);
+
+</script>
+</body>
+</html>

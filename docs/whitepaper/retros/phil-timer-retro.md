@@ -4,7 +4,7 @@
 
 **Camera used:** Horizon
 
-**One-line pitch:** A 60-min timer for **whiteboard** | **group work** | **focus time** using magnetic fiducial markers (arUco) and CV. The timer's behavior depends on what horizon sees.
+**One-line pitch:** A 60-min timer for `whiteboard` | `group work` | `focus time` using magnetic fiducial markers (arUco) and CV. The timer's behavior depends on what Horizon sees.
 
 ## What I tried
 
@@ -28,19 +28,17 @@
 
 <img src="../artifacts/phil-timer-screenshot.png" width="400">
 
-Caption: one sentence describing what we're looking at.
+In this screenshot, the on/off switch has been placed, and the timer has been set. Turn the timer off by flipping it over and hiding the arUco tag.
 
 ## If I had another week
 
-One paragraph. What's the next move? What would you add, fix, or rethink? If a future student picked this up, what should they know first?
+**Next Move:** Now that I have working software, the next move would be to refine the hardware solution. Where does Horizon live?
 
-**Next Move:**
+**Add:** Another aspect of timers which I haven't explored yet, is sound. I also think if the countdown display could be projected, it could reinforce the spatial experience.
 
-**Add:**
+**Fix:** There's currently nothing broken at the moment, however I'm sure that there will be issues with the program once I start fleshing it out spatially.
 
-**Fix:**
-
-**Rethink:**
+**Rethink:** I might rethink the readability of the tags themselves. Currently, they are optimized for computer vision, but might not be fully intuitive for humans yet.
 
 ---
 
@@ -49,4 +47,4 @@ One paragraph. What's the next move? What would you add, fix, or rethink? If a f
 - [x] Screenshot added to `docs/whitepaper/artifacts/` and linked above
 - [x] "What broke" section is honest and specific
 - [x] No code snippets — this is a story, not a tutorial
-- [ ] Opened as a pull request, not pushed to `main`
+- [X] Opened as a pull request, not pushed to `main`
