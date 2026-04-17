@@ -34,7 +34,7 @@ Two or three bullet points. **Be honest.** False positives, weird edge cases, th
 
 Put your screenshot in `docs/whitepaper/artifacts/` using the naming convention `<firstname>-<project>-screenshot.png`, then link to it here:
 
-![](../artifacts/test1.png)
+![](../artifacts/sophie-forest-screenshot.png)
 
 Caption: one sentence describing what we're looking at.
 

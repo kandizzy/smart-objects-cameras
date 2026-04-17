@@ -188,10 +188,10 @@ PROJECT_CONTRACTS: dict[str, dict] = {
         "emits": ["phase.command", "agent.confirmed"],
         "mock": {"can_run_without_hardware": True, "default_response": "agent.confirmed"},
     },
-    "calmball": {
-        "display_name": "CalmBall",
+    "tony": {
+        "display_name": "Tony",
         "student_name": "Ramon Naula",
-        "description": "Stress regulation squeeze ball and calming sound object.",
+        "description": "Classroom agent that responds to student moods with object detection and health monitoring.",
         "consumes": ["room_mode_change", "person_change"],
         "emits": ["calm.activated", "calm.deactivated"],
         "mock": {"can_run_without_hardware": True, "default_response": "calm.activated"},
@@ -416,10 +416,10 @@ LOCAL_PROJECTS: dict[str, dict] = {
         "description": "Shared question board and conversational desk object.",
         "subscribed_events": ["room_mode_change", "agent.message"],
     },
-    "calmball": {
-        "display_name": "CalmBall",
+    "tony": {
+        "display_name": "Tony",
         "student_name": "Ramon Naula",
-        "description": "Stress regulation squeeze ball and calming sound object.",
+        "description": "Classroom agent that responds to student moods with object detection and health monitoring.",
         "subscribed_events": ["room_mode_change", "person_change"],
     },
     "gus-mode": {

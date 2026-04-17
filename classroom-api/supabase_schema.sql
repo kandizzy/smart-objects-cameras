@@ -136,10 +136,10 @@ VALUES
      'Desk object that listens when the student speaks English and provides gentle grammar suggestions on a small screen.',
      ARRAY['person_change']),
 
-    ('calmball',
-     'CalmBall',
+    ('tony',
+     'Tony',
      'Ramon Naula',
-     'Stress-regulation squeeze ball that triggers calming sounds through a Pi speaker when squeezed.',
+     'Classroom agent that responds to student moods with object detection and health monitoring.',
      ARRAY['room_mode_change']),
 
     ('gesture-timer',

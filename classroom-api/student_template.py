@@ -31,7 +31,7 @@ import requests
 
 # ── Config (CHANGE THESE) ────────────────────────────────────────────────────
 
-PROJECT_ID = "your-project-id"  # e.g. "seren-room", "echodesk", "calmball"
+PROJECT_ID = "your-project-id"  # e.g. "seren-room", "echodesk", "tony"
 API_BASE = os.getenv("CLASSROOM_API", "http://localhost:8766")
 API_KEY = os.getenv("PROJECT_API_KEY", "")
 
@@ -106,7 +106,7 @@ def publish_event(event_type: str, payload: dict = None, target=None) -> dict:
 
     Examples:
         publish_event("mode_change", {"mode": "party"})
-        publish_event("calmball_squeeze", {"intensity": 0.8})
+        publish_event("tony_squeeze", {"intensity": 0.8})
         publish_event("timer_started", {"minutes": 5})
         publish_event("timer_done", {"minutes": 5}, target="prof-dm")
         publish_event("echodesk_message", {"text": "Can you repeat that?"})

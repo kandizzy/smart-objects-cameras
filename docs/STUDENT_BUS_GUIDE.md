@@ -255,12 +255,12 @@ http://localhost:8766/projects/focus-beam/events
 
 ---
 
-### calmball — Ramon Naula
+### tony — Ramon Naula
 
 ```
-I'm building "CalmBall", a stress regulation object that activates calming
-sounds and haptics when the classroom energy gets high.
-My project ID is "calmball".
+I'm building "Tony", a classroom agent that responds to student moods
+using object detection and health monitoring.
+My project ID is "tony".
 The bus API is at http://localhost:8766, API key is "testkey".
 
 Using classroom-api/student_template.py as a base, write a Python script that:
@@ -269,7 +269,7 @@ Using classroom-api/student_template.py as a base, write a Python script that:
    - capabilities: ["calm", "calm.activated", "calm.deactivated"]
    - consumes: ["room_mode_change", "person_change"]
    - emits: ["calm.activated", "calm.deactivated"]
-2. Subscribes to /subscribe/events?subscriber_id=calmball
+2. Subscribes to /subscribe/events?subscriber_id=tony
 3. On room_mode_change:
    - mode "activity" with total_persons > 8 → publish calm.activated with
      {"sound": "forest-ambience", "intensity": 0.7}

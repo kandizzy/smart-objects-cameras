@@ -32,7 +32,7 @@ Two or three bullet points. **Be honest.** False positives, weird edge cases, th
 
 Put your screenshot in `docs/whitepaper/artifacts/` using the naming convention `<firstname>-<project>-screenshot.png`, then link to it here:
 
-![](../artifacts/<firstname>-<project>-screenshot.png)
+![](../artifacts/kathy-nodcheck1-screenshot.png)
 
 Caption: The drawing is a sketch of the initial idea before building the prototype. The demo is a screenshot of me using the tool.
 

@@ -70,7 +70,7 @@ the console event bus and in the showcase report.
 | `seren-room` | Yuxuan (Seren) | Python / p5.js | room_mode_change → ambience.changed |
 | `forest-classroom` | Sophie Lee | Python / p5.js | person_change → forest.mood_set |
 | `focus-beam` | Feifey | Python / Pi | probe_classification → beam.pointed |
-| `calmball` | Ramon Naula | Python / hardware | room_mode_change → calm.activated |
+| `tony` | Ramon Naula | Python / hardware | room_mode_change → calm.activated |
 | `echodesk` | Kathy Choi | Python / browser | agent.message → question.displayed |
 | `imprint` | Darren Chia | Python / Pi | whiteboard_change → handwriting.captured |
 | `gesture-timer` | Phil | Python / Pi | timer.offer → timer.started / timer.done |

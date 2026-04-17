@@ -143,11 +143,11 @@ def run_script(speed: float) -> None:
         prediction_confidence=0.91,
         whiteboard_text_detected=False,
     )
-    # Activity mode: forest reacts to group energy; calmball activates; seren-room adapts
+    # Activity mode: forest reacts to group energy; tony activates; seren-room adapts
     publish("gus-mode",         "gus.excited",     {"trigger": "group activity started"})
     publish("forest-classroom", "forest.mood_set", {"mood": "active", "intensity": 0.8})
     publish("forest-classroom", "forest.pulse",    {"count": 14})
-    publish("calmball",         "calm.activated",  {"sound": "forest-ambience", "intensity": 0.5})
+    publish("tony",             "calm.activated",  {"sound": "forest-ambience", "intensity": 0.5})
     publish("seren-room",       "ambience.changed", {"mode": "group", "intensity": 0.7})
     publish("seren-room",       "room.adapted",    {"adaptation": "warm collaborative lighting", "reason": "group activity"})
     # Focus beam turns off during open discussion
@@ -201,8 +201,8 @@ def run_script(speed: float) -> None:
     publish("echodesk", "question.displayed", {"text": "What does your project consume?", "display_id": "q-001"})
     pause(2, speed)
     publish("gesture-timer", "timer.done", {"minutes": 5, "completed": True})
-    # CalmBall deactivates when timer is done (lower energy)
-    publish("calmball", "calm.deactivated", {"reason": "timer done"})
+    # Tony deactivates when timer is done (lower energy)
+    publish("tony", "calm.deactivated", {"reason": "timer done"})
     pause(1, speed)
 
     set_phase("conclude")

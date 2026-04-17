@@ -14,7 +14,7 @@ A multi-agent system, stripped to essentials, is: multiple independent actors wi
 |-------|------|-------|------|---------|
 | **Camera-detectors** (person, fatigue, gaze, whiteboard) | Perception loop @ 5–30 FPS | Local status files + (soon) API state | "Report what I see" | POST /push/state |
 | **Discord bot** | Command event loop | Reads API state | "Answer humans when asked" | Discord commands + webhook |
-| **Student projects** (CalmBall, EchoDesk, timer, Seren's room, Gus, ...) | SSE subscription loop | Own project events | "React to room in my specific way" | GET /subscribe/state, POST /projects/:id/events |
+| **Student projects** (Tony, EchoDesk, timer, Seren's room, Gus, ...) | SSE subscription loop | Own project events | "React to room in my specific way" | GET /subscribe/state, POST /projects/:id/events |
 | **V-JEPA probe** | Classification loop | Prediction history | "Label what's happening" | predicted_class field via push |
 | **Humans in the room** (prof, students) | Biological | Memory, intent | Varies per person | Physical presence + Discord |
 | **The orchestrator** (not yet built) | Context state machine | Shared room context | "Conduct the room" | Would own /mode as a writable endpoint |
