@@ -1,6 +1,6 @@
 # Retro — Kathy · JuJu · Seren · Gus Mode (IxD ↔ Kathy's Room)
 
-![Project screenshot](/artifacts/cutegus.png)
+![Project screenshot](../artifacts/gus-mode-screenshot.png)
 
 ---
 
