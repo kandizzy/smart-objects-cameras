@@ -99,10 +99,10 @@ WEEK2_REPO = Path(
 )
 WEEK2_OBJECTS_FILE = WEEK2_REPO / "server" / "objects.json"
 MEDIA_FILES = {
-    "gravity_photo.jpg": REPO_ROOT / "gravity_photo.jpg",
-    "horizon_photo.jpg": REPO_ROOT / "horizon_photo.jpg",
-    "gravity_depth_combined.jpg": REPO_ROOT / "gravity_depth_combined.jpg",
-    "horizon_depth_overlay.jpg": REPO_ROOT / "horizon_depth_overlay.jpg",
+    "gravity_photo.jpg": REPO_ROOT / "samples" / "depth-pointcloud" / "gravity_photo.jpg",
+    "horizon_photo.jpg": REPO_ROOT / "samples" / "depth-pointcloud" / "horizon_photo.jpg",
+    "gravity_depth_combined.jpg": REPO_ROOT / "samples" / "depth-pointcloud" / "gravity_depth_combined.jpg",
+    "horizon_depth_overlay.jpg": REPO_ROOT / "samples" / "depth-pointcloud" / "horizon_depth_overlay.jpg",
 }
 
 # ── Supabase client ──────────────────────────────────────────────────────────
