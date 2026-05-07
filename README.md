@@ -1,5 +1,9 @@
 # OAK-D + Raspberry Pi 5 — Smart Objects Template
 
+**[Read the story →](https://smartobjects.design)** &nbsp;·&nbsp; **[Whitepaper draft →](docs/whitepaper/multi-agent-classroom.md)**
+
+A 15-week constructionist build (in the Papert sense): depth cameras as conversational agents on a shared bus, a population of student-built reactive agents, and the humans in the room treated as agents too. This repo holds the class template, the detectors, the classroom API, and the draft whitepaper that came out of the semester.
+
 ## Smart Classroom API / Demo Room
 
 The current classroom bus and demo orchestrator live in [classroom-api/](classroom-api/README.md).
